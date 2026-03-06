@@ -7,7 +7,7 @@ build/
 
 # 训练与本地环境
 logs/
-logs_smoketest/
+logs*/
 .venv/
 .env
 

@@ -1,7 +1,8 @@
-﻿# 精简版最小依赖（与 environment.yml 保持一致）
+﻿# 精简版最小依赖（支持 Gym + Atari57 + MuJoCo）
 numpy>=1.26
 PyYAML>=6.0
 torch>=2.3
-gymnasium[classic-control]>=1.0
+gymnasium[atari,mujoco]>=1.0
+autorom[accept-rom-license]>=0.6.1
 tqdm>=4.66
 matplotlib>=3.8

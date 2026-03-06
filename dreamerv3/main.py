@@ -15,11 +15,89 @@ from gymnasium import spaces
 from .agent import DreamerLiteAgent
 from .rssm import ReplayBuffer
 
-# 当前精简实现已验证可运行的环境（来自 gymnasium[classic-control]）。
-SUPPORTED_ENVS = [
+# Gym 常用环境（当前实现可直接使用）。
+SUPPORTED_GYM_ENVS = [
     "CartPole-v1",
     "Acrobot-v1",
     "MountainCar-v0",
+    "MountainCarContinuous-v0",
+    "Pendulum-v1",
+]
+
+# Atari57 基准环境（Gymnasium Atari + ALE v5 命名）。
+ATARI57_ENVS = [
+    "ALE/Alien-v5",
+    "ALE/Amidar-v5",
+    "ALE/Assault-v5",
+    "ALE/Asterix-v5",
+    "ALE/Asteroids-v5",
+    "ALE/Atlantis-v5",
+    "ALE/BankHeist-v5",
+    "ALE/BattleZone-v5",
+    "ALE/BeamRider-v5",
+    "ALE/Berzerk-v5",
+    "ALE/Bowling-v5",
+    "ALE/Boxing-v5",
+    "ALE/Breakout-v5",
+    "ALE/Centipede-v5",
+    "ALE/ChopperCommand-v5",
+    "ALE/CrazyClimber-v5",
+    "ALE/Defender-v5",
+    "ALE/DemonAttack-v5",
+    "ALE/DoubleDunk-v5",
+    "ALE/Enduro-v5",
+    "ALE/FishingDerby-v5",
+    "ALE/Freeway-v5",
+    "ALE/Frostbite-v5",
+    "ALE/Gopher-v5",
+    "ALE/Gravitar-v5",
+    "ALE/Hero-v5",
+    "ALE/IceHockey-v5",
+    "ALE/Jamesbond-v5",
+    "ALE/Kangaroo-v5",
+    "ALE/Krull-v5",
+    "ALE/KungFuMaster-v5",
+    "ALE/MontezumaRevenge-v5",
+    "ALE/MsPacman-v5",
+    "ALE/NameThisGame-v5",
+    "ALE/Phoenix-v5",
+    "ALE/Pitfall-v5",
+    "ALE/Pooyan-v5",
+    "ALE/Pong-v5",
+    "ALE/PrivateEye-v5",
+    "ALE/Qbert-v5",
+    "ALE/Riverraid-v5",
+    "ALE/RoadRunner-v5",
+    "ALE/Robotank-v5",
+    "ALE/Seaquest-v5",
+    "ALE/Skiing-v5",
+    "ALE/Solaris-v5",
+    "ALE/SpaceInvaders-v5",
+    "ALE/StarGunner-v5",
+    "ALE/Tennis-v5",
+    "ALE/TimePilot-v5",
+    "ALE/Tutankham-v5",
+    "ALE/UpNDown-v5",
+    "ALE/Venture-v5",
+    "ALE/VideoPinball-v5",
+    "ALE/WizardOfWor-v5",
+    "ALE/YarsRevenge-v5",
+    "ALE/Zaxxon-v5",
+]
+
+# MuJoCo 常见任务（Gymnasium MuJoCo 套件）。
+MUJOCO_ENVS = [
+    "Ant-v4",
+    "HalfCheetah-v4",
+    "Hopper-v4",
+    "Humanoid-v4",
+    "HumanoidStandup-v4",
+    "InvertedDoublePendulum-v4",
+    "InvertedPendulum-v4",
+    "Pusher-v4",
+    "Reacher-v4",
+    "Swimmer-v4",
+    "Walker2d-v4",
 ]
 
 
@@ -73,7 +151,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=None, help="随机种子，覆盖配置")
     parser.add_argument("--logdir", type=str, default="logs", help="日志输出目录")
     parser.add_argument("--device", type=str, default=None, help="设备，cuda 或 cpu")
-    parser.add_argument("--list-envs", action="store_true", help="打印当前已验证可运行的环境")
+    parser.add_argument("--list-envs", action="store_true", help="打印当前支持环境列表")
     return parser.parse_args()
 
 
@@ -85,26 +163,65 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def validate_env(env) -> tuple[int, int]:
-    """检查环境是否符合当前最小实现要求并返回维度。"""
+def preprocess_obs(obs: np.ndarray) -> np.ndarray:
+    """统一预处理观测：拉平并转换为 float32。"""
+    obs = np.asarray(obs)
+    if obs.dtype == np.uint8:
+        obs = obs.astype(np.float32) / 255.0
+    else:
+        obs = obs.astype(np.float32)
+    return obs.reshape(-1)
+
+
+def denorm_action(norm_action: np.ndarray, low: np.ndarray, high: np.ndarray) -> np.ndarray:
+    """把 [-1, 1] 范围动作映射回环境动作空间。"""
+    return low + (norm_action + 1.0) * 0.5 * (high - low)
+
+
+def validate_env(env) -> tuple[int, int, str]:
+    """检查环境是否符合当前实现要求并返回维度与动作类型。"""
     if not isinstance(env.observation_space, spaces.Box):
         raise ValueError("当前仅支持 Box 观测空间。")
-    if not isinstance(env.action_space, spaces.Discrete):
-        raise ValueError("当前仅支持 Discrete 动作空间。")
 
     obs_dim = int(np.prod(env.observation_space.shape))
-    act_dim = int(env.action_space.n)
-    return obs_dim, act_dim
+    if isinstance(env.action_space, spaces.Discrete):
+        return obs_dim, int(env.action_space.n), "discrete"
+    if isinstance(env.action_space, spaces.Box):
+        return obs_dim, int(np.prod(env.action_space.shape)), "continuous"
+    raise ValueError("当前仅支持 Discrete 或 Box 动作空间。")
+
+
+def print_supported_envs() -> None:
+    """打印环境清单。"""
+    print("Gym 常用环境：")
+    for name in SUPPORTED_GYM_ENVS:
+        print(f"- {name}")
+    print(f"\nAtari57 环境（共 {len(ATARI57_ENVS)} 个）：")
+    for name in ATARI57_ENVS:
+        print(f"- {name}")
+    print("\nMuJoCo 常用环境：")
+    for name in MUJOCO_ENVS:
+        print(f"- {name}")
+    print("\n说明：Minecraft/MineRL 不在当前精简版支持范围内。")
+
+
+def create_run_dir(base_dir: pathlib.Path) -> pathlib.Path:
+    """创建不会冲突的日志目录。"""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    run_dir = base_dir / stamp
+    idx = 1
+    while run_dir.exists():
+        run_dir = base_dir / f"{stamp}-{idx}"
+        idx += 1
+    run_dir.mkdir(parents=True, exist_ok=False)
+    return run_dir
 
 
 def main() -> None:
     """执行训练主循环。"""
     args = parse_args()
     if args.list_envs:
-        print("当前已验证可运行环境：")
-        for name in SUPPORTED_ENVS:
-            print(f"- {name}")
-        print("说明：Minecraft/MineRL 不在当前精简版支持范围内。")
+        print_supported_envs()
         return
 
     config = load_config(pathlib.Path(args.config))
@@ -122,7 +239,7 @@ def main() -> None:
     env = gym.make(args.env)
     env.action_space.seed(seed)
 
-    obs_dim, act_dim = validate_env(env)
+    obs_dim, act_dim, action_type = validate_env(env)
 
     device = config["device"]
     if device == "auto":
@@ -131,6 +248,7 @@ def main() -> None:
     agent = DreamerLiteAgent(
         obs_dim=obs_dim,
         act_dim=act_dim,
+        action_type=action_type,
         device=device,
         lr=float(config["lr"]),
         gamma=float(config["gamma"]),
@@ -145,29 +263,46 @@ def main() -> None:
     buffer = ReplayBuffer(
         capacity=int(config["buffer_size"]),
         obs_dim=obs_dim,
+        action_type=action_type,
+        act_dim=act_dim,
         device=device,
     )
 
-    logdir = pathlib.Path(args.logdir) / time.strftime("%Y%m%d-%H%M%S")
-    logdir.mkdir(parents=True, exist_ok=True)
+    logdir = create_run_dir(pathlib.Path(args.logdir))
 
     with (logdir / "config.yaml").open("w", encoding="utf-8") as f:
-        yaml.safe_dump(config, f, allow_unicode=True)
+        yaml.safe_dump({**config, "action_type": action_type}, f, allow_unicode=True)
 
     metrics_logger = MetricsLogger(logdir / "metrics.csv")
 
-    obs, _ = env.reset(seed=seed)
+    raw_obs, _ = env.reset(seed=seed)
+    obs = preprocess_obs(raw_obs)
     episode_reward = 0.0
     episode_steps = 0
     episode_count = 0
     start_time = time.time()
 
-    for step in range(1, int(config["train_steps"]) + 1):
-        action = agent.select_action(obs, explore=True)
-        next_obs, reward, terminated, truncated, _ = env.step(action)
-        done = bool(terminated or truncated)
+    action_low = None
+    action_high = None
+    if action_type == "continuous":
+        action_low = env.action_space.low.reshape(-1).astype(np.float32)
+        action_high = env.action_space.high.reshape(-1).astype(np.float32)
 
-        buffer.add(obs, action, reward, done, next_obs)
+    for step in range(1, int(config["train_steps"]) + 1):
+        model_action = agent.select_action(obs, explore=True)
+        if action_type == "discrete":
+            env_action = model_action
+            buffer_action = model_action
+        else:
+            env_action = denorm_action(model_action, action_low, action_high).reshape(env.action_space.shape)
+            env_action = np.clip(env_action, env.action_space.low, env.action_space.high)
+            buffer_action = model_action
+
+        next_raw_obs, reward, terminated, truncated, _ = env.step(env_action)
+        done = bool(terminated or truncated)
+        next_obs = preprocess_obs(next_raw_obs)
+
+        buffer.add(obs, buffer_action, reward, done, next_obs)
 
         obs = next_obs
         episode_reward += float(reward)
@@ -195,7 +330,8 @@ def main() -> None:
                     f"[Episode {episode_count}] "
                     f"step={step} reward={episode_reward:.2f} len={episode_steps} fps={fps:.1f}"
                 )
-            obs, _ = env.reset()
+            raw_obs, _ = env.reset()
+            obs = preprocess_obs(raw_obs)
             episode_reward = 0.0
             episode_steps = 0
 

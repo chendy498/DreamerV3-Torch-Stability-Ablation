@@ -25,14 +25,18 @@ class MLP(nn.Module):
 class WorldModel(nn.Module):
     """同时包含世界模型与策略价值头。"""
 
-    def __init__(self, obs_dim: int, act_dim: int, hidden_dim: int, feature_dim: int):
+    def __init__(self, obs_dim: int, act_dim: int, hidden_dim: int, feature_dim: int, action_type: str):
         super().__init__()
         self.act_dim = act_dim
+        self.action_type = action_type
 
         self.encoder = MLP(obs_dim, feature_dim, hidden_dim)
         self.transition = MLP(feature_dim + act_dim, feature_dim, hidden_dim)
         self.reward = MLP(feature_dim + act_dim, 1, hidden_dim)
-        self.actor_head = MLP(feature_dim, act_dim, hidden_dim)
+
+        # 连续动作输出均值和对数方差，离散动作输出 logits。
+        actor_out_dim = act_dim * 2 if action_type == "continuous" else act_dim
+        self.actor_head = MLP(feature_dim, actor_out_dim, hidden_dim)
         self.value_head = MLP(feature_dim, 1, hidden_dim)
 
     def encode(self, obs: torch.Tensor) -> torch.Tensor:
@@ -40,9 +44,12 @@ class WorldModel(nn.Module):
         return self.encoder(obs)
 
     def _merge_feat_action(self, feat: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        """将离散动作 one-hot 后与特征拼接。"""
-        one_hot = torch.nn.functional.one_hot(action.long(), num_classes=self.act_dim).float()
-        return torch.cat([feat, one_hot], dim=-1)
+        """将动作向量与特征拼接。"""
+        if self.action_type == "discrete":
+            action_vec = torch.nn.functional.one_hot(action.long(), num_classes=self.act_dim).float()
+        else:
+            action_vec = action.float()
+        return torch.cat([feat, action_vec], dim=-1)
 
     def predict_next(self, feat: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """预测下一步特征。"""
@@ -55,7 +62,7 @@ class WorldModel(nn.Module):
         return self.reward(x).squeeze(-1)
 
     def actor(self, feat: torch.Tensor) -> torch.Tensor:
-        """输出动作 logits。"""
+        """输出策略网络原始结果。"""
         return self.actor_head(feat)
 
     def value(self, feat: torch.Tensor) -> torch.Tensor:
@@ -66,11 +73,16 @@ class WorldModel(nn.Module):
 class ReplayBuffer:
     """固定容量经验回放池。"""
 
-    def __init__(self, capacity: int, obs_dim: int, device: str):
+    def __init__(self, capacity: int, obs_dim: int, action_type: str, act_dim: int, device: str):
         self.capacity = capacity
+        self.action_type = action_type
+        self.act_dim = act_dim
         self.obs = np.zeros((capacity, obs_dim), dtype=np.float32)
         self.next_obs = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self.action = np.zeros((capacity,), dtype=np.int64)
+        if action_type == "discrete":
+            self.action = np.zeros((capacity,), dtype=np.int64)
+        else:
+            self.action = np.zeros((capacity, act_dim), dtype=np.float32)
         self.reward = np.zeros((capacity,), dtype=np.float32)
         self.done = np.zeros((capacity,), dtype=np.float32)
         self.pos = 0
@@ -96,7 +108,8 @@ class ReplayBuffer:
         size = len(self)
         indices = np.random.randint(0, size, size=batch_size)
         obs = torch.tensor(self.obs[indices], dtype=torch.float32, device=self.device)
-        action = torch.tensor(self.action[indices], dtype=torch.int64, device=self.device)
+        action_dtype = torch.int64 if self.action_type == "discrete" else torch.float32
+        action = torch.tensor(self.action[indices], dtype=action_dtype, device=self.device)
         reward = torch.tensor(self.reward[indices], dtype=torch.float32, device=self.device)
         done = torch.tensor(self.done[indices], dtype=torch.float32, device=self.device)
         next_obs = torch.tensor(self.next_obs[indices], dtype=torch.float32, device=self.device)

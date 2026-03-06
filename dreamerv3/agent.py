@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.distributions import Normal
 
 from .rssm import WorldModel
 
@@ -16,6 +17,7 @@ class AgentConfig:
 
     obs_dim: int
     act_dim: int
+    action_type: str
     hidden_dim: int
     feature_dim: int
     gamma: float
@@ -32,6 +34,7 @@ class DreamerLiteAgent(nn.Module):
         self,
         obs_dim: int,
         act_dim: int,
+        action_type: str,
         device: str,
         lr: float,
         gamma: float,
@@ -46,6 +49,7 @@ class DreamerLiteAgent(nn.Module):
         self.config = AgentConfig(
             obs_dim=obs_dim,
             act_dim=act_dim,
+            action_type=action_type,
             hidden_dim=hidden_dim,
             feature_dim=feature_dim,
             gamma=gamma,
@@ -61,6 +65,7 @@ class DreamerLiteAgent(nn.Module):
             act_dim=act_dim,
             hidden_dim=hidden_dim,
             feature_dim=feature_dim,
+            action_type=action_type,
         )
 
         self.to(self.device)
@@ -70,18 +75,33 @@ class DreamerLiteAgent(nn.Module):
         """导出配置，便于存档。"""
         return self.config
 
+    def _continuous_dist(self, actor_out: torch.Tensor) -> tuple[Normal, torch.Tensor, torch.Tensor]:
+        """构建连续动作分布。"""
+        mean, log_std = torch.chunk(actor_out, 2, dim=-1)
+        log_std = torch.clamp(log_std, min=-5.0, max=2.0)
+        std = torch.exp(log_std)
+        return Normal(mean, std), mean, log_std
+
     @torch.no_grad()
-    def select_action(self, obs: np.ndarray, explore: bool = True) -> int:
+    def select_action(self, obs: np.ndarray, explore: bool = True):
         """根据当前观测选择动作。"""
         obs_t = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         feature = self.world.encode(obs_t)
-        logits = self.world.actor(feature)
-        probs = torch.softmax(logits, dim=-1)
-        if explore:
-            action = torch.multinomial(probs, num_samples=1)
-        else:
-            action = torch.argmax(probs, dim=-1, keepdim=True)
-        return int(action.item())
+        actor_out = self.world.actor(feature)
+
+        if self.config.action_type == "discrete":
+            probs = torch.softmax(actor_out, dim=-1)
+            if explore:
+                action = torch.multinomial(probs, num_samples=1)
+            else:
+                action = torch.argmax(probs, dim=-1, keepdim=True)
+            return int(action.item())
+
+        dist, mean, _ = self._continuous_dist(actor_out)
+        raw_action = dist.sample() if explore else mean
+        # 连续动作统一压到 [-1, 1]，由主循环再映射到环境动作范围。
+        norm_action = torch.tanh(raw_action)
+        return norm_action.squeeze(0).cpu().numpy().astype(np.float32)
 
     def update(self, replay, batch_size: int) -> dict:
         """执行一次参数更新。"""
@@ -104,13 +124,19 @@ class DreamerLiteAgent(nn.Module):
 
         value_loss = F.mse_loss(value, target)
 
-        logits = self.world.actor(feature)
-        log_probs = torch.log_softmax(logits, dim=-1)
-        probs = torch.softmax(logits, dim=-1)
-        chosen_log_prob = log_probs.gather(1, action.long().unsqueeze(-1)).squeeze(-1)
+        actor_out = self.world.actor(feature)
+        if self.config.action_type == "discrete":
+            log_probs = torch.log_softmax(actor_out, dim=-1)
+            probs = torch.softmax(actor_out, dim=-1)
+            chosen_log_prob = log_probs.gather(1, action.long().unsqueeze(-1)).squeeze(-1)
+            entropy = -(probs * log_probs).sum(dim=-1).mean()
+        else:
+            dist, mean, log_std = self._continuous_dist(actor_out)
+            chosen_log_prob = dist.log_prob(action).sum(dim=-1)
+            # 高斯分布熵：每一维的熵累加。
+            entropy = (0.5 * (1.0 + np.log(2.0 * np.pi)) + log_std).sum(dim=-1).mean()
 
         advantage = (target - value).detach()
-        entropy = -(probs * log_probs).sum(dim=-1).mean()
         actor_loss = -(chosen_log_prob * advantage).mean() - self.config.ent_coef * entropy
 
         total_loss = (
