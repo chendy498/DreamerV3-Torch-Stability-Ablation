@@ -117,6 +117,12 @@ class MetricsLogger:
             "episode_len",
             "loss",
             "world_loss",
+            "reward_loss",
+            "kl_loss",
+            "kl_dyn",
+            "kl_rep",
+            "kl_dyn_free",
+            "kl_rep_free",
             "value_loss",
             "actor_loss",
             "entropy",
@@ -256,6 +262,12 @@ def main() -> None:
         value_coef=float(config["value_coef"]),
         actor_coef=float(config["actor_coef"]),
         ent_coef=float(config["ent_coef"]),
+        kl_balance=float(config["kl_balance"]),
+        kl_free_nats=float(config["kl_free_nats"]),
+        kl_scale=float(config["kl_scale"]),
+        kl_dyn_scale=float(config["kl_dyn_scale"]),
+        kl_rep_scale=float(config["kl_rep_scale"]),
+        unimix_ratio=float(config["unimix_ratio"]),
         hidden_dim=int(config["hidden_dim"]),
         feature_dim=int(config["feature_dim"]),
     )
@@ -358,6 +370,7 @@ def main() -> None:
                     f"step={step} "
                     f"loss={metrics['loss']:.4f} "
                     f"world={metrics['world_loss']:.4f} "
+                    f"kl={metrics['kl_loss']:.4f} "
                     f"actor={metrics['actor_loss']:.4f} "
                     f"value={metrics['value_loss']:.4f} "
                     f"fps={fps:.1f}"

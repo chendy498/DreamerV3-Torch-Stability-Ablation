@@ -40,7 +40,25 @@ python -m dreamerv3.main --list-envs
 - Atari 首次使用前建议执行一次：`AutoROM --accept-license`。
 - `Minecraft/MineRL` 仍不在当前精简版支持范围内。
 
-## 5. 训练输出
+## 5. 稳定性模块
+
+当前 Torch 版本已接入以下稳定性工程：
+
+- `KL balance`（动力学 KL 与表示 KL 按比例混合）
+- `free bits`（KL 下限裁剪）
+- `dynamics/representation KL` 拆分监控
+- 离散策略 `unimix` 混合，降低策略塌缩风险
+
+对应可调参数在 `dreamerv3/configs.yaml`：
+
+- `kl_balance`
+- `kl_free_nats`
+- `kl_scale`
+- `kl_dyn_scale`
+- `kl_rep_scale`
+- `unimix_ratio`
+
+## 6. 训练输出
 
 默认日志目录：
 
@@ -54,7 +72,7 @@ logs/时间戳/
 - `dreamer_lite.pt`：模型参数
 - `metrics.csv`：可视化输入
 
-## 6. 画图
+## 7. 画图
 
 ```bash
 python plot.py --metrics logs/时间戳/metrics.csv
@@ -72,6 +90,7 @@ python plot.py \
 默认输出：
 
 - Episode Reward
-- Train Loss（total/world/actor/value）
+- Train Losses（total/world/reward/actor/value）
+- KL Stabilization（kl_loss/kl_dyn/kl_rep/free_bits 后 KL）
 - Runtime Metrics（episode_len/fps/buffer_size）
 - Optimization Signals（entropy/grad_norm/adv_mean/target_mean/value_mean/reward_mean）

@@ -43,6 +43,12 @@ def load_metrics(path: pathlib.Path):
     train_metrics = {
         "loss": [],
         "world_loss": [],
+        "reward_loss": [],
+        "kl_loss": [],
+        "kl_dyn": [],
+        "kl_rep": [],
+        "kl_dyn_free": [],
+        "kl_rep_free": [],
         "value_loss": [],
         "actor_loss": [],
         "entropy": [],
@@ -90,7 +96,7 @@ def main() -> None:
 
     ep_steps, ep_rewards, ep_lens, tr_steps, tr = load_metrics(metrics_path)
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
 
     axes[0, 0].plot(ep_steps, ep_rewards, alpha=0.35, label="raw_reward")
     if len(ep_rewards) > 0:
@@ -103,13 +109,25 @@ def main() -> None:
 
     axes[0, 1].plot(tr_steps, tr["loss"], label="total")
     axes[0, 1].plot(tr_steps, tr["world_loss"], label="world")
+    axes[0, 1].plot(tr_steps, tr["reward_loss"], label="reward")
     axes[0, 1].plot(tr_steps, tr["actor_loss"], label="actor")
     axes[0, 1].plot(tr_steps, tr["value_loss"], label="value")
-    axes[0, 1].set_title("Train Loss")
+    axes[0, 1].set_title("Train Losses")
     axes[0, 1].set_xlabel("Step")
     axes[0, 1].set_ylabel("Loss")
     axes[0, 1].grid(alpha=0.3)
     axes[0, 1].legend()
+
+    axes[0, 2].plot(tr_steps, tr["kl_loss"], label="kl_loss")
+    axes[0, 2].plot(tr_steps, tr["kl_dyn"], label="kl_dyn")
+    axes[0, 2].plot(tr_steps, tr["kl_rep"], label="kl_rep")
+    axes[0, 2].plot(tr_steps, tr["kl_dyn_free"], label="kl_dyn_free")
+    axes[0, 2].plot(tr_steps, tr["kl_rep_free"], label="kl_rep_free")
+    axes[0, 2].set_title("KL Stabilization")
+    axes[0, 2].set_xlabel("Step")
+    axes[0, 2].set_ylabel("KL")
+    axes[0, 2].grid(alpha=0.3)
+    axes[0, 2].legend()
 
     axes[1, 0].plot(ep_steps, ep_lens, label="episode_len")
     axes[1, 0].plot(tr_steps, tr["fps"], label="fps")
@@ -129,6 +147,8 @@ def main() -> None:
     axes[1, 1].set_xlabel("Step")
     axes[1, 1].grid(alpha=0.3)
     axes[1, 1].legend()
+
+    axes[1, 2].axis("off")
 
     fig.tight_layout()
     fig.savefig(out, dpi=160)

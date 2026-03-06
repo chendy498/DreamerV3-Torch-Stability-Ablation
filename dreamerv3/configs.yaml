@@ -18,6 +18,14 @@ value_coef: 1.0
 actor_coef: 1.0
 ent_coef: 0.001
 
+# 稳定性参数（Dreamer 风格）
+kl_balance: 0.8
+kl_free_nats: 1.0
+kl_scale: 1.0
+kl_dyn_scale: 1.0
+kl_rep_scale: 1.0
+unimix_ratio: 0.01
+
 # 网络规模
 hidden_dim: 256
 feature_dim: 128
