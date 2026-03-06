@@ -1,0 +1,31 @@
+﻿# 稳定性开启版本（推荐用于对比实验）
+seed: 0
+
+device: auto
+
+train_steps: 3000
+warmup_steps: 1000
+update_every: 1
+batch_size: 128
+buffer_size: 100000
+
+lr: 0.0003
+gamma: 0.99
+world_coef: 1.0
+value_coef: 1.0
+actor_coef: 1.0
+ent_coef: 0.001
+
+# 稳定性参数（开启）
+kl_balance: 0.8
+kl_free_nats: 1.0
+kl_scale: 1.0
+kl_dyn_scale: 1.0
+kl_rep_scale: 1.0
+unimix_ratio: 0.01
+
+hidden_dim: 256
+feature_dim: 128
+
+log_episode_every: 5
+log_train_every: 200

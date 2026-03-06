@@ -2,6 +2,9 @@
 
 这是一个基于 PyTorch 的 DreamerLite 实现，已精简为单一 Conda 工作流，支持 Gym、Atari57、MuJoCo。
 
+对比实验说明见：
+README_ABLATION.md（稳定性开启/关闭的消融对比）
+
 ## 1. 创建 Conda 环境
 
 ```bash
@@ -94,3 +97,4 @@ python plot.py \
 - KL Stabilization（kl_loss/kl_dyn/kl_rep/free_bits 后 KL）
 - Runtime Metrics（episode_len/fps/buffer_size）
 - Optimization Signals（entropy/grad_norm/adv_mean/target_mean/value_mean/reward_mean）
+

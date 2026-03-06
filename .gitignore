@@ -8,6 +8,10 @@ build/
 # 训练与本地环境
 logs/
 logs*/
+demo_run/
+runs_demo/
+runs_ablation/
+logs_stability/
 .venv/
 .env
 
