@@ -1,0 +1,27 @@
+﻿# 简化版 PyTorch DreamerV3 配置
+seed: 0
+
+device: auto
+
+# 训练循环参数
+train_steps: 20000
+warmup_steps: 1000
+update_every: 1
+batch_size: 128
+buffer_size: 100000
+
+# 学习率与损失权重
+lr: 0.0003
+gamma: 0.99
+world_coef: 1.0
+value_coef: 1.0
+actor_coef: 1.0
+ent_coef: 0.001
+
+# 网络规模
+hidden_dim: 256
+feature_dim: 128
+
+# 日志频率
+log_episode_every: 5
+log_train_every: 200
