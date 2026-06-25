@@ -1,0 +1,47 @@
+# PyTorch Director experiment configs.
+# Use with train_torch.py, for example:
+#   --configs debug,torch_baseline
+#   --configs debug,torch_baseline,rs_aux
+#   --configs debug,torch_baseline,rs_aux,rs_goal
+#   --configs debug,torch_baseline,rs_aux,rs_goal,rs_adapt
+
+torch_baseline:
+  data_loader: embodied
+  tf: {platform: gpu, jit: False, precision: 32}
+  task_behavior: Hierarchy
+  reward_state:
+    enabled: False
+    horizon: 8
+    discount: 0.99
+    event_threshold: 1e-6
+    return_scale: 0.0
+    event_scale: 0.0
+    goal_return_scale: 1.0
+    goal_event_scale: 1.0
+    inputs: [deter, stoch]
+    return_head: {layers: 2, units: 256, act: elu, norm: layer, dist: symlog, outscale: 0.1, inputs: [deter, stoch]}
+    event_head: {layers: 2, units: 256, act: elu, norm: layer, dist: binary, outscale: 0.1, inputs: [deter, stoch]}
+  rs_goal: {enabled: False, candidates: 1}
+  rs_adapt: {enabled: False, return_jump: 0.5, event_threshold: 0.7, surprise_threshold: 1e9}
+
+# B = A + reward-state auxiliary only. No goal selection or temporal-abstraction change.
+rs_aux:
+  reward_state:
+    enabled: True
+    horizon: 8
+    return_scale: 0.1
+    event_scale: 0.1
+  rs_goal: {enabled: False, candidates: 1}
+  rs_adapt: {enabled: False}
+
+# C = B + reward-state goal proposal/reranking.
+rs_goal:
+  rs_goal: {enabled: True, candidates: 4}
+
+# D = C + reward-state adaptive goal refresh.
+rs_adapt:
+  rs_adapt:
+    enabled: True
+    return_jump: 0.5
+    event_threshold: 0.7
+    surprise_threshold: 1e9
